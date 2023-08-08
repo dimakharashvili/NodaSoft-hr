@@ -59,7 +59,7 @@ func tasksProducer(exit <-chan struct{}) (out chan *Task) {
 
 // т.к. обработка таски ресурсоемка, то имеет смысл использовать пулл обработчиков
 func tasksHandler(in <-chan *Task, exit <-chan struct{}, poolSize int) (out chan *Task) {
-	out = make(chan *Task)
+	out = make(chan *Task, 10)
 
 	taskWorker := func(t *Task) *Task {
 		res := &Task{id: t.id, created: t.created}
@@ -102,8 +102,8 @@ func tasksHandler(in <-chan *Task, exit <-chan struct{}, poolSize int) (out chan
 }
 
 func tasksSorter(in <-chan *Task, exit <-chan struct{}) (outTask chan *Task, outErr chan error) {
-	outErr = make(chan error)
-	outTask = make(chan *Task)
+	outErr = make(chan error, 10)
+	outTask = make(chan *Task, 10)
 
 	wg := &sync.WaitGroup{}
 	go func() {
