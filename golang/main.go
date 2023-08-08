@@ -32,8 +32,8 @@ func (t *Task) String() string {
 		t.finished.Format(time.RFC3339Nano))
 }
 
-func tasksProducer(exit <-chan struct{}) (out chan Task) {
-	out = make(chan Task, 10)
+func tasksProducer(exit <-chan struct{}) (out chan *Task) {
+	out = make(chan *Task, 10)
 	id := 0 // id был не уникальным, для простоты заменим на счетчик
 
 	go func() {
@@ -49,7 +49,7 @@ func tasksProducer(exit <-chan struct{}) (out chan Task) {
 					execErr = fmt.Errorf("some error occured")
 				}
 				id++
-				out <- Task{created: created, id: id, execErr: execErr} // передаем таск на выполнение
+				out <- &Task{created: created, id: id, execErr: execErr} // передаем таск на выполнение
 			}
 
 		}
@@ -58,11 +58,11 @@ func tasksProducer(exit <-chan struct{}) (out chan Task) {
 }
 
 // т.к. обработка таски ресурсоемка, то имеет смысл использовать пулл обработчиков
-func tasksHandler(in <-chan Task, exit <-chan struct{}, poolSize int) (out chan Task) {
-	out = make(chan Task, 10)
+func tasksHandler(in <-chan *Task, exit <-chan struct{}, poolSize int) (out chan *Task) {
+	out = make(chan *Task)
 
-	taskWorker := func(t Task) Task {
-		res := Task{id: t.id, created: t.created}
+	taskWorker := func(t *Task) *Task {
+		res := &Task{id: t.id, created: t.created}
 		if t.execErr != nil {
 			res.execErr = fmt.Errorf("task is already broken: %w", t.execErr)
 		} else if t.created.Before(time.Now().Add(-500 * time.Millisecond)) {
@@ -101,9 +101,9 @@ func tasksHandler(in <-chan Task, exit <-chan struct{}, poolSize int) (out chan 
 	return out
 }
 
-func tasksSorter(in <-chan Task, exit <-chan struct{}) (outTask chan Task, outErr chan error) {
-	outErr = make(chan error, 10)
-	outTask = make(chan Task, 10)
+func tasksSorter(in <-chan *Task, exit <-chan struct{}) (outTask chan *Task, outErr chan error) {
+	outErr = make(chan error)
+	outTask = make(chan *Task)
 
 	wg := &sync.WaitGroup{}
 	go func() {
@@ -120,7 +120,7 @@ func tasksSorter(in <-chan Task, exit <-chan struct{}) (outTask chan Task, outEr
 					return
 				}
 				wg.Add(1)
-				go func(t Task) {
+				go func(t *Task) {
 					defer wg.Done()
 					if t.execErr != nil {
 						outErr <- fmt.Errorf("task id: %d time: %s, error: %w", t.id, t.created.Format(time.RFC3339Nano), t.execErr) // можно сделать свой тип error
@@ -145,8 +145,8 @@ func main() {
 	unsortedTasks := tasksHandler(producedTasks, exit, 5)
 	doneTasks, failedTasks := tasksSorter(unsortedTasks, exit)
 
-	result := map[int]Task{} // сделал последовательный доступ, либо нужен sync map (нужна ли map в целом?)
-	errors := []error{}      // слайс так же модифицируется последовательно, либо обернуть мьютексом
+	result := make(map[int]*Task) // сделал последовательный доступ, либо нужен sync map (нужна ли map в целом?)
+	errors := []error{}           // слайс так же модифицируется последовательно, либо обернуть мьютексом
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -176,6 +176,7 @@ func main() {
 
 	fmt.Println("Done tasks:")
 	for _, t := range result {
-		fmt.Println(&t)
+		tmp := t
+		fmt.Println(tmp)
 	}
 }
